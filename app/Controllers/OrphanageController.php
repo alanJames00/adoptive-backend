@@ -117,6 +117,31 @@ class OrphanageController {
         }
 	}
 
+	/**
+ * Get a single orphanage by its ID
+ */
+	public function getOrphanageById($id) {
+    $sql = "SELECT id, name, email, phone, address, visiting_hours_start, visiting_hours_end, extra_note, media_links, verified 
+            FROM orphanages 
+            WHERE id = :id";
+
+    $query = $this->db->prepare($sql);
+    $query->bindParam(':id', $id, \PDO::PARAM_INT);
+
+    if ($query->execute()) {
+        $orphanage = $query->fetch(\PDO::FETCH_ASSOC);
+
+        if ($orphanage) {
+            Flight::json($orphanage, 200);
+        } else {
+            Flight::json(['error' => 'Orphanage not found'], 404);
+        }
+    } else {
+        Flight::json(['error' => 'Failed to retrieve orphanage'], 500);
+    }
+	}
+
+
 	public function deleteOrphanage($id) {
     // Validate ID
     if (empty($id) || !is_numeric($id)) {

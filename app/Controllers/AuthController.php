@@ -177,7 +177,155 @@ class AuthController {
         Flight::json(['error' => 'Failed to update password'], 500);
     }
 	}
- 
+
+	/*
+	 * User forgot password
+	 */
+	public function forgetPassword() {
+    $data = Flight::request()->data->getData();
+
+    // Validate input
+    if (empty($data['email'])) {
+        Flight::json(['error' => 'Email is required'], 400);
+        return;
+    }
+
+    // Fetch user by email
+    $query = $this->db->prepare("SELECT id FROM users WHERE email = :email");
+    $query->bindParam(':email', $data['email']);
+    $query->execute();
+    $user = $query->fetch(\PDO::FETCH_ASSOC);
+
+    if (!$user) {
+        Flight::json(['error' => 'Email not found'], 404);
+        return;
+    }
+
+    // Generate jwt token with 10 minutes validity
+    $payload = [
+        'id' => $user['id'],
+        'email' => $data['email'],
+        'iat' => time(),
+        'exp' => time() + (10 * 60), // 10 minutes expiration
+    ];
+    $secret = $_ENV['JWT_SECRET'];
+    $token = base64_encode(json_encode($payload)) . '.' . hash_hmac('sha256', json_encode($payload),	  $secret);
+
+    // Simulated magic URL
+    $magicUrl = $_ENV['APP_URL'] . '/reset-password?token=' . urlencode($token);
+
+    // Simulate sending an email
+    $this->sendEmail($data['email'], 'Password Reset Link', "Click the link to reset your password: $magicUrl");
+
+    Flight::json(['message' => 'Password reset link sent to your email'], 200);
+	}
+
+	
+	private function sendEmail($to, $subject, $message) {
+    // Elastic Email API URL
+    $url = "https://api.elasticemail.com/v4/emails/transactional";
+
+    // Prepare the payload
+    $payload = [
+        "Recipients" => [
+            "To" => [$to]
+        ],
+        "Content" => [
+            "Body" => [
+                [
+                    "ContentType" => "HTML",
+                    "Content" => $message,
+                    "Charset" => "utf-8"
+                ]
+            ],
+            "Subject" => $subject,
+			"From" => $_ENV['EMAIL_FROM'] 
+		]
+    ];
+
+    // Initialize cURL
+    $ch = curl_init($url);
+
+    // Set cURL options
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Content-Type: application/json",
+        "X-ElasticEmail-ApiKey: " . $_ENV['ELASTIC_EMAIL_API_KEY'] // Replace with your API key
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+
+    // Execute the API request
+    $response = curl_exec($ch);
+
+    // Check for errors
+    if (curl_errno($ch)) {
+        error_log('cURL error: ' . curl_error($ch));
+    }
+
+    // Close the cURL session
+    curl_close($ch);
+
+    // Log the response (for debugging purposes)
+    error_log("Elastic Email Response: $response");
+	}
+
+// 	public function verifyToken($token) {
+//     $parts = explode('.', $token);
+//     if (count($parts) !== 2) {
+//         return false;
+//     }
+//
+//     $payload = json_decode(base64_decode($parts[0]), true);
+//     $signature = $parts[1];
+//     $secret = $_ENV['JWT_SECRET'];
+//
+//     if (hash_hmac('sha256', json_encode($payload), $secret) === $signature) {
+//         // Check token expiration
+//         if ($payload['exp'] > time()) {
+//             return $payload;
+//         }
+//     }
+//     return false;
+// }
+
+	public function resetPassword() {
+    $data = Flight::request()->data->getData();
+
+    // Validate input
+    if (empty($data['token']) || empty($data['new_password'])) {
+        Flight::json(['error' => 'Token and new password are required'], 400);
+        return;
+    }
+
+    // Decode and verify the token
+    $token = $data['token'];
+    $decodedPayload = $this->verifyToken($token);
+
+    if (!$decodedPayload) {
+        Flight::json(['error' => 'Invalid or expired token'], 401);
+        return;
+    }
+
+    $userId = $decodedPayload['id'];
+
+    // Hash the new password
+    $hashedPassword = password_hash($data['new_password'], PASSWORD_BCRYPT);
+
+    // Update the user's password
+    $query = $this->db->prepare("UPDATE users SET password = :password WHERE id = :id");
+    $query->bindParam(':password', $hashedPassword);
+    $query->bindParam(':id', $userId);
+
+    if ($query->execute()) {
+        Flight::json(['message' => 'Password reset successfully'], 200);
+    } else {
+        Flight::json(['error' => 'Failed to reset password'], 500);
+    }
+	}
+
+
+
 	// ADMIN auth sub controller
 	public function adminLogin() {
     $data = Flight::request()->data->getData();
@@ -215,6 +363,29 @@ class AuthController {
     Flight::json(['token' => $token]);
 }
 	//
-	
+
+	/**
+ * Fetch all end users
+ */
+	public function getAllUsers() {
+    // Check if the current user is an admin (Optional)
+    $user = Flight::get('user');
+    if (!$user || $user['role'] !== 'admin') {
+        Flight::json(['error' => 'Unauthorized'], 401);
+        return;
+    }
+
+    // Query to fetch all users
+    $query = $this->db->prepare("SELECT id, name, email, phone FROM users");
+    $query->execute();
+    $users = $query->fetchAll(\PDO::FETCH_ASSOC);
+
+    if ($users) {
+        Flight::json($users, 200);
+    } else {
+        Flight::json(['message' => 'No users found'], 404);
+    }
+	}
+
 }
 
