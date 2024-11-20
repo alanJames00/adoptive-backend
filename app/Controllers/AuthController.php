@@ -212,7 +212,7 @@ class AuthController {
     $token = base64_encode(json_encode($payload)) . '.' . hash_hmac('sha256', json_encode($payload),	  $secret);
 
     // Simulated magic URL
-    $magicUrl = $_ENV['APP_URL'] . '/reset-password?token=' . urlencode($token);
+    $magicUrl = $_ENV['APP_URL'] . '/auth/reset-password?token=' . urlencode($token);
 
     // Simulate sending an email
     $this->sendEmail($data['email'], 'Password Reset Link', "Click the link to reset your password: $magicUrl");
