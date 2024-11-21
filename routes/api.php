@@ -78,6 +78,10 @@ Flight::route('DELETE /admin/orphanages/@id', function ($id) {
 });
 
 // edit an orphanage
+Flight::route('POST /admin/orphanage/edit/@id', function($id) {
+	AuthMiddleware::authenticate();
+	(new OrphanageController())->editOrphanage($id);
+});
 
 
 // get all schedules

@@ -169,7 +169,73 @@ class OrphanageController {
     } else {
         Flight::json(['error' => 'Failed to delete orphanage'], 500);
     }
-}
+	}
+
+	/**
+	 * Edit orphanage visiting hours and extra notes
+	*/
+	public function editOrphanage($id) {
+    // Validate ID
+    if (empty($id) || !is_numeric($id)) {
+        Flight::json(['error' => 'Invalid orphanage ID'], 400);
+        return;
+    }
+
+    // Get request data
+    $data = Flight::request()->data->getData();
+
+    // Validate required input fields
+    if (empty($data['visiting_hours_start']) || empty($data['visiting_hours_end'])) {
+        Flight::json(['error' => 'Visiting hours start and end are required'], 400);
+        return;
+    }
+
+    // Allow visiting hours in either HH:mm or HHmm format
+    $timePattern = '/^([01]\d|2[0-3]):?([0-5]\d)$/';
+    if (!preg_match($timePattern, $data['visiting_hours_start']) || 
+        !preg_match($timePattern, $data['visiting_hours_end'])) {
+        Flight::json(['error' => 'Invalid time format. Use HH:mm or HHmm'], 400);
+        return;
+    }
+
+    // Normalize time format to HH:mm
+    $startTime = preg_replace($timePattern, '$1:$2', $data['visiting_hours_start']);
+    $endTime = preg_replace($timePattern, '$1:$2', $data['visiting_hours_end']);
+
+    // Check if orphanage exists
+    $query = $this->db->prepare("SELECT id FROM orphanages WHERE id = :id");
+    $query->bindParam(':id', $id, \PDO::PARAM_INT);
+    $query->execute();
+    $orphanage = $query->fetch();
+
+    if (!$orphanage) {
+        Flight::json(['error' => 'Orphanage not found'], 404);
+        return;
+    }
+
+    // Update orphanage data
+    $updateQuery = $this->db->prepare("
+        UPDATE orphanages 
+        SET visiting_hours_start = :visiting_hours_start, 
+            visiting_hours_end = :visiting_hours_end, 
+            extra_note = :extra_note 
+        WHERE id = :id
+    ");
+
+    $updateQuery->bindParam(':visiting_hours_start', $startTime);
+    $updateQuery->bindParam(':visiting_hours_end', $endTime);
+
+    // Bind optional extra_note
+    $extraNote = isset($data['extra_note']) ? $data['extra_note'] : null;
+    $updateQuery->bindParam(':extra_note', $extraNote);
+    $updateQuery->bindParam(':id', $id, \PDO::PARAM_INT);
+
+    if ($updateQuery->execute()) {
+        Flight::json(['message' => 'Orphanage updated successfully'], 200);
+    } else {
+        Flight::json(['error' => 'Failed to update orphanage'], 500);
+    }
+	}
 
  
 }
